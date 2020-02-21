@@ -1,8 +1,5 @@
-import sys
 import os.path
-import shutil
 import cherrypy
-#import barcode
 from barcode import generate
 from barcode.writer import ImageWriter
 
@@ -21,7 +18,7 @@ class Barcodes(object):
             doc = """<table>%s</table>""" % (doc)
         if (noform == "off"):
             form= """
-                <form method="get" action="">
+                <form method="post" action="">
                   <textarea name="codes" rows="20" cols="50"/>%s</textarea>
                   <br />
                   <input type="checkbox" name="noform" />Do wydruku
@@ -40,6 +37,15 @@ class Barcodes(object):
           </body>
         </html>""" % (form, doc)
 
+    @cherrypy.expose
+    def get_image(self, code, ver=1):
+        self.prepare_image(code)
+        cherrypy.response.headers['Content-Type'] = "image/svg+xml"
+        f=open("%s/%s.%s" % (self.cachepath(), code, self.cachedext()))
+        data=f.read()
+        f.close()
+        return data.encode()
+
     def prepare_image(self, code):
         cherrypy.log("prepare_image(%s[%d])" % (code, len(code)))
         if (len(code) > 12):
@@ -48,18 +54,26 @@ class Barcodes(object):
             return self.generate_barcode(code, "CODE128")
         return ""
 
-    def generate_barcode(self, code, codeformat):
-        cachedir = "%s/%s" % (
+    def cacheuri(self):
+        return "cache"
+
+    def cachepath(self):
+        return "%s/%s" % (
                 cherrypy.request.app.config['/']['tools.staticdir.root']
                 , cherrypy.request.app.config['/cache']['tools.staticdir.dir']
                 )
-        cachedext = ".svg"
+
+    def cachedext(self):
+        return "svg"
+
+    def generate_barcode(self, code, codeformat):
+        cachedir = self.cachepath()
         cachedpath = "%s/%s" % (cachedir, code) 
-        cachedpathwithext = "%s%s" % (cachedpath, cachedext) 
+        cachedpathwithext = "%s.%s" % (cachedpath, self.cachedext()) 
         cherrypy.log("generate_barcode(%s) to %s" % (code, cachedpath))
         if ( not os.path.isfile(cachedpathwithext)):
             cachedfullname = generate(codeformat, code, output=cachedpath)
-        return 'cache/%s%s' % (code, cachedext)
+        return '%s/%s.%s' % (self.cacheuri(), code, self.cachedext())
 
 if __name__ == '__main__':
     cherrypy.quickstart(Barcodes(), '/barcodes', config)
